@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>7-Day Playlist Player</title>
-    <!-- Tailwind CSS for styling -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
@@ -20,7 +19,6 @@
             }
         }
     </script>
-    <!-- FontAwesome for icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 <body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col font-sans selection:bg-indigo-500 selection:text-white">
@@ -58,7 +56,7 @@
                     <h2 id="activePlayerTitle" class="text-2xl font-bold text-white">Select a day to play</h2>
                 </div>
                 <div class="flex items-center space-x-2 w-full md:w-auto">
-                    <button onclick="playActivePlaylist()" id="mainPlayBtn" class="flex-1 md:flex-none px-6 py-3 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-medium rounded-xl shadow-lg shadow-indigo-600/30 transition-all flex items-center justify-center space-x-2">
+                    <button onclick="triggerPlayActive()" id="mainPlayBtn" class="flex-1 md:flex-none px-6 py-3 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-medium rounded-xl shadow-lg shadow-indigo-600/30 transition-all flex items-center justify-center space-x-2">
                         <i class="fa-solid fa-play"></i>
                         <span id="playBtnText">Play Today</span>
                     </button>
@@ -102,7 +100,7 @@
                 <div class="flex items-center space-x-2 w-full sm:w-auto">
                     <label class="flex-1 sm:flex-none px-4 py-2.5 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-200 font-medium rounded-xl cursor-pointer transition-all flex items-center justify-center space-x-2 border border-slate-700">
                         <i class="fa-solid fa-plus text-indigo-400"></i>
-                        <span>Add Local Audio</span>
+                        <span>Add Audio Files</span>
                         <input type="file" id="audioFileInput" accept="audio/*" multiple class="hidden" onchange="handleFileSelect(event)">
                     </label>
                 </div>
@@ -116,120 +114,75 @@
 
     </main>
 
+    <!-- Hidden file input for playback mapping -->
+    <input type="file" id="playFileResolver" accept="audio/*" multiple class="hidden" onchange="handlePlaybackFilesSelected(event)">
+
     <!-- Footer -->
     <footer class="text-center py-6 text-xs text-slate-500 border-t border-slate-900 mt-auto">
-        7-Day Playlist Player • Runs locally in your browser with IndexedDB & HTML5 Audio
+        7-Day Playlist Player • Web Edition
     </footer>
 
     <!-- Application Script -->
     <script>
         const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
         let playlists = {};
-        let activeDay = "";
-        let currentPlayingDay = "";
+        let activeDay = "Monday";
+        let currentPlayingDay = "Monday";
         let currentTrackIndex = 0;
         let audioPlayer = new Audio();
         let isPlaying = false;
-        let db = null;
+        let loadedAudioFiles = {}; // Stores active File objects for current session
 
-        // Initialize IndexedDB to store blobs permanently in browser
-        function initDB() {
-            return new Promise((resolve, reject) => {
-                const request = indexedDB.open("DailyPlaylistDB", 1);
-                request.onerror = () => reject(request.error);
-                request.onsuccess = () => {
-                    db = request.result;
-                    resolve(db);
-                };
-                request.onupgradeneeded = (event) => {
-                    const database = event.target.result;
-                    if (!database.objectStoreNames.contains("audioFiles")) {
-                        database.createObjectStore("audioFiles", { keyPath: "id" });
-                    }
-                };
-            });
-        }
-
-        async function saveFileToDB(id, file) {
-            return new Promise((resolve, reject) => {
-                const transaction = db.transaction(["audioFiles"], "readwrite");
-                const store = transaction.objectStore("audioFiles");
-                store.put({ id, file, name: file.name });
-                transaction.oncomplete = () => resolve(id);
-                transaction.onerror = () => reject(transaction.error);
-            });
-        }
-
-        async function getFileFromDB(id) {
-            return new Promise((resolve, reject) => {
-                const transaction = db.transaction(["audioFiles"], "readonly");
-                const store = transaction.objectStore("audioFiles");
-                const request = store.get(id);
-                request.onsuccess = () => resolve(request.result ? request.result.file : null);
-                request.onerror = () => reject(request.error);
-            });
-        }
-
-        async function deleteFileFromDB(id) {
-            return new Promise((resolve, reject) => {
-                const transaction = db.transaction(["audioFiles"], "readwrite");
-                const store = transaction.objectStore("audioFiles");
-                store.delete(id);
-                transaction.oncomplete = () => resolve();
-                transaction.onerror = () => reject(transaction.error);
-            });
-        }
-
-        // Load metadata from localStorage
-        function loadMetadata() {
-            const saved = localStorage.getItem("weekly_playlists_meta");
-            if (saved) {
-                playlists = JSON.parse(saved);
-            } else {
-                DAYS.forEach(day => {
-                    playlists[day] = [];
-                });
+        function getTodayName() {
+            try {
+                const date = new Date();
+                let dayIndex = date.getDay();
+                dayIndex = dayIndex === 0 ? 6 : dayIndex - 1;
+                return DAYS[dayIndex] || "Monday";
+            } catch (e) {
+                return "Monday";
             }
+        }
+
+        function loadMetadata() {
+            try {
+                const saved = localStorage.getItem("weekly_playlists_meta");
+                if (saved) {
+                    playlists = JSON.parse(saved);
+                }
+            } catch (e) {}
+            
+            DAYS.forEach(day => {
+                if (!playlists[day]) playlists[day] = [];
+            });
         }
 
         function saveMetadata() {
-            localStorage.setItem("weekly_playlists_meta", JSON.stringify(playlists));
-        }
-
-        // Determine today's name
-        function getTodayName() {
-            const date = new Date();
-            let dayIndex = date.getDay(); // 0 is Sunday, 1 is Monday...
-            // Convert to Monday = 0 index
-            dayIndex = dayIndex === 0 ? 6 : dayIndex - 1;
-            return DAYS[dayIndex];
-        }
-
-        // App Initialization
-        window.addEventListener('DOMContentLoaded', async () => {
             try {
-                await initDB();
-            } catch (e) {
-                console.error("IndexedDB initialization failed", e);
-            }
+                localStorage.setItem("weekly_playlists_meta", JSON.stringify(playlists));
+            } catch (e) {}
+        }
 
+        (async function initApp() {
             loadMetadata();
             
             const today = getTodayName();
-            document.getElementById("currentDayBadge").innerText = today;
+            const badge = document.getElementById("currentDayBadge");
+            if (badge) badge.innerText = today;
+
             activeDay = today;
             currentPlayingDay = today;
 
             renderDaysGrid();
             renderPlaylistManager();
 
-            // Audio element listeners
             audioPlayer.addEventListener('timeupdate', updateProgress);
             audioPlayer.addEventListener('ended', playNextTrack);
-        });
+        })();
 
         function renderDaysGrid() {
             const grid = document.getElementById("daysGrid");
+            if (!grid) return;
             const today = getTodayName();
             grid.innerHTML = "";
 
@@ -265,11 +218,15 @@
         }
 
         function renderPlaylistManager() {
-            document.getElementById("selectedDayHeader").innerText = `${activeDay} Playlist`;
+            const header = document.getElementById("selectedDayHeader");
+            if (header) header.innerText = `${activeDay} Playlist`;
+            
             const tracks = playlists[activeDay] || [];
-            document.getElementById("trackCountSub").innerText = `${tracks.length} track${tracks.length === 1 ? '' : 's'} added`;
+            const sub = document.getElementById("trackCountSub");
+            if (sub) sub.innerText = `${tracks.length} track${tracks.length === 1 ? '' : 's'} added`;
 
             const container = document.getElementById("trackListContainer");
+            if (!container) return;
             container.innerHTML = "";
 
             if (tracks.length === 0) {
@@ -277,31 +234,26 @@
                     <div class="text-center py-10 border border-dashed border-slate-800 rounded-xl">
                         <i class="fa-solid fa-folder-open text-3xl text-slate-600 mb-2"></i>
                         <p class="text-sm text-slate-400">No tracks added to ${activeDay} yet.</p>
-                        <p class="text-xs text-slate-600 mt-1">Click "Add Local Audio" above to select audio files.</p>
+                        <p class="text-xs text-slate-600 mt-1">Click "Add Audio Files" above to list your track names.</p>
                     </div>
                 `;
                 return;
             }
 
-            tracks.forEach((track, index) => {
+            tracks.forEach((trackName, index) => {
                 const item = document.createElement("div");
                 item.className = "flex items-center justify-between p-3 rounded-xl bg-slate-950/40 border border-slate-800/60 hover:border-slate-700 transition-colors";
                 
-                const isCurrentlyPlayingThis = isPlaying && currentPlayingDay === activeDay && currentTrackIndex === index;
-
                 item.innerHTML = `
                     <div class="flex items-center space-x-3 truncate">
                         <span class="text-xs font-mono text-slate-500 w-5 text-right">${index + 1}</span>
-                        <div class="w-8 h-8 rounded-lg ${isCurrentlyPlayingThis ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-400'} flex items-center justify-center shrink-0">
-                            <i class="fa-solid ${isCurrentlyPlayingThis ? 'fa-volume-high animate-bounce' : 'fa-music'} text-xs"></i>
+                        <div class="w-8 h-8 rounded-lg bg-slate-800 text-slate-400 flex items-center justify-center shrink-0">
+                            <i class="fa-solid fa-music text-xs"></i>
                         </div>
-                        <span class="text-sm font-medium text-slate-200 truncate">${track.name}</span>
+                        <span class="text-sm font-medium text-slate-200 truncate">${trackName}</span>
                     </div>
                     <div class="flex items-center space-x-1 shrink-0">
-                        <button onclick="playSpecificTrack('${activeDay}', ${index})" class="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition-colors" title="Play">
-                            <i class="fa-solid fa-play text-xs"></i>
-                        </button>
-                        <button onclick="removeTrack('${activeDay}', '${track.id}')" class="p-2 hover:bg-red-500/10 rounded-lg text-slate-400 hover:text-red-400 transition-colors" title="Remove">
+                        <button onclick="removeTrack('${activeDay}', ${index})" class="p-2 hover:bg-red-500/10 rounded-lg text-slate-400 hover:text-red-400 transition-colors" title="Remove">
                             <i class="fa-solid fa-trash text-xs"></i>
                         </button>
                     </div>
@@ -310,70 +262,73 @@
             });
         }
 
-        async function handleFileSelect(event) {
+        function handleFileSelect(event) {
             const files = event.target.files;
             if (!files || files.length === 0) return;
 
             for (let i = 0; i < files.length; i++) {
                 const file = files[i];
-                const id = 'track_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-                
-                try {
-                    await saveFileToDB(id, file);
-                    if (!playlists[activeDay]) playlists[activeDay] = [];
-                    playlists[activeDay].push({ id, name: file.name });
-                } catch (e) {
-                    console.error("Failed to save file to DB", e);
-                }
+                if (!playlists[activeDay]) playlists[activeDay] = [];
+                playlists[activeDay].push(file.name);
+                loadedAudioFiles[file.name] = file; // Cache file reference for current session
             }
 
             saveMetadata();
             renderDaysGrid();
             renderPlaylistManager();
-            event.target.value = ""; // Reset input
+            event.target.value = "";
         }
 
-        async function removeTrack(day, id) {
-            try {
-                await deleteFileFromDB(id);
-            } catch (e) {
-                console.error("Failed to delete file from DB", e);
-            }
-
-            playlists[day] = playlists[day].filter(t => t.id !== id);
+        function removeTrack(day, index) {
+            playlists[day].splice(index, 1);
             saveMetadata();
             renderDaysGrid();
             renderPlaylistManager();
         }
 
-        async function playActivePlaylist() {
+        function triggerPlayActive() {
             const targetDay = activeDay;
             const tracks = playlists[targetDay] || [];
             if (tracks.length === 0) {
-                alert(`No tracks in ${targetDay}'s playlist! Add some audio files first.`);
+                alert(`No tracks in ${targetDay}'s playlist! Add track names first.`);
                 return;
             }
 
             currentPlayingDay = targetDay;
             currentTrackIndex = 0;
-            await loadAndPlayTrack();
+
+            // Check if we have files loaded in session memory
+            const missingFiles = tracks.some(name => !loadedAudioFiles[name]);
+            if (missingFiles) {
+                // Prompt user to select files from their computer to match the playlist
+                alert(`To play ${targetDay}, please select your audio files from your device to link them.`);
+                document.getElementById("playFileResolver").click();
+            } else {
+                playCurrentTrack();
+            }
         }
 
-        async function playSpecificTrack(day, index) {
-            currentPlayingDay = day;
-            currentTrackIndex = index;
-            await loadAndPlayTrack();
+        function handlePlaybackFilesSelected(event) {
+            const files = event.target.files;
+            if (!files || files.length === 0) return;
+
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                loadedAudioFiles[file.name] = file;
+            }
+            event.target.value = "";
+            playCurrentTrack();
         }
 
-        async function loadAndPlayTrack() {
-            const tracks = playlists[currentPlayingDay];
-            if (!tracks || tracks.length === 0 || currentTrackIndex >= tracks.length) return;
+        function playCurrentTrack() {
+            const tracks = playlists[currentPlayingDay] || [];
+            if (currentTrackIndex >= tracks.length) return;
 
-            const trackMeta = tracks[currentTrackIndex];
-            const file = await getFileFromDB(trackMeta.id);
+            const trackName = tracks[currentTrackIndex];
+            const file = loadedAudioFiles[trackName];
 
             if (!file) {
-                alert("Audio file not found in browser database. Please re-add it.");
+                alert(`Could not find file for "${trackName}". Please re-select files.`);
                 return;
             }
 
@@ -382,10 +337,9 @@
             audioPlayer.play().then(() => {
                 isPlaying = true;
                 updatePlayButtonState();
-                document.getElementById("nowPlayingText").innerText = `${currentPlayingDay}: ${trackMeta.name}`;
-                renderPlaylistManager(); // update animated icon
+                const nowPlaying = document.getElementById("nowPlayingText");
+                if (nowPlaying) nowPlaying.innerText = `${currentPlayingDay}: ${trackName}`;
             }).catch(e => {
-                console.error("Playback error:", e);
                 isPlaying = false;
                 updatePlayButtonState();
             });
@@ -395,12 +349,12 @@
             const tracks = playlists[currentPlayingDay] || [];
             if (currentTrackIndex < tracks.length - 1) {
                 currentTrackIndex++;
-                loadAndPlayTrack();
+                playCurrentTrack();
             } else {
                 isPlaying = false;
                 updatePlayButtonState();
-                document.getElementById("nowPlayingText").innerText = "Playlist finished";
-                renderPlaylistManager();
+                const nowPlaying = document.getElementById("nowPlayingText");
+                if (nowPlaying) nowPlaying.innerText = "Playlist finished";
             }
         }
 
@@ -410,15 +364,17 @@
 
         function updatePlayButtonState() {
             const btnText = document.getElementById("playBtnText");
-            const playIcon = document.querySelector("#mainPlayBtn i");
+            const playBtn = document.getElementById("mainPlayBtn");
+            const playIcon = playBtn ? playBtn.querySelector("i") : null;
+            
             if (isPlaying) {
-                btnText.innerText = "Pause Today";
-                playIcon.className = "fa-solid fa-pause";
-                document.getElementById("mainPlayBtn").onclick = pausePlayback;
+                if (btnText) btnText.innerText = "Pause Today";
+                if (playIcon) playIcon.className = "fa-solid fa-pause";
+                if (playBtn) playBtn.onclick = pausePlayback;
             } else {
-                btnText.innerText = "Play Today";
-                playIcon.className = "fa-solid fa-play";
-                document.getElementById("mainPlayBtn").onclick = playActivePlaylist;
+                if (btnText) btnText.innerText = "Play Today";
+                if (playIcon) playIcon.className = "fa-solid fa-play";
+                if (playBtn) playBtn.onclick = triggerPlayActive;
             }
         }
 
@@ -426,20 +382,21 @@
             audioPlayer.pause();
             isPlaying = false;
             updatePlayButtonState();
-            renderPlaylistManager();
         }
 
         function updateProgress() {
             if (!audioPlayer.duration) return;
             const percent = (audioPlayer.currentTime / audioPlayer.duration) * 100;
-            document.getElementById("trackProgressBar").style.width = `${percent}%`;
+            const bar = document.getElementById("trackProgressBar");
+            if (bar) bar.style.width = `${percent}%`;
 
             const currentMin = Math.floor(audioPlayer.currentTime / 60);
             const currentSec = Math.floor(audioPlayer.currentTime % 60).toString().padStart(2, '0');
             const durMin = Math.floor(audioPlayer.duration / 60) || 0;
             const durSec = Math.floor(audioPlayer.duration % 60).toString().padStart(2, '0');
 
-            document.getElementById("trackTimeDisplay").innerText = `${currentMin}:${currentSec} / ${durMin}:${durSec}`;
+            const timeDisplay = document.getElementById("trackTimeDisplay");
+            if (timeDisplay) timeDisplay.innerText = `${currentMin}:${currentSec} / ${durMin}:${durSec}`;
         }
 
         function seekTrack(event) {
@@ -452,7 +409,12 @@
         }
 
         function toggleDarkMode() {
-            const html = document.documentElement;
-            html.classList.toggle('dark');
+            document.documentElement.classList.toggle('dark');
             const icon = document.getElementById("themeIcon");
-            if (html.classList.contains('dark')) {
+            if (icon) {
+                icon.className = document.documentElement.classList.contains('dark') ? "fa-solid fa-sun" : "fa-solid fa-moon";
+            }
+        }
+    </script>
+</body>
+</html>
