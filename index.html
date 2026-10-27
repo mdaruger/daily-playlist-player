@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>7-Day Playlist Player</title>
+    <title>7-Day Preset Playlist Player</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
@@ -31,8 +31,8 @@
                     <i class="fa-solid fa-headphones text-lg"></i>
                 </div>
                 <div>
-                    <h1 class="text-xl font-bold tracking-tight bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">Daily Playlist Player</h1>
-                    <p class="text-xs text-slate-400">Your custom schedule, automated daily.</p>
+                    <h1 class="text-xl font-bold tracking-tight bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">Daily Preset Player</h1>
+                    <p class="text-xs text-slate-400">Automated daily schedule from GitHub.</p>
                 </div>
             </div>
             <div class="flex items-center space-x-2">
@@ -56,7 +56,7 @@
                     <h2 id="activePlayerTitle" class="text-2xl font-bold text-white">Select a day to play</h2>
                 </div>
                 <div class="flex items-center space-x-2 w-full md:w-auto">
-                    <button onclick="triggerPlayActive()" id="mainPlayBtn" class="flex-1 md:flex-none px-6 py-3 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-medium rounded-xl shadow-lg shadow-indigo-600/30 transition-all flex items-center justify-center space-x-2">
+                    <button onclick="playActivePlaylist()" id="mainPlayBtn" class="flex-1 md:flex-none px-6 py-3 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-medium rounded-xl shadow-lg shadow-indigo-600/30 transition-all flex items-center justify-center space-x-2">
                         <i class="fa-solid fa-play"></i>
                         <span id="playBtnText">Play Today</span>
                     </button>
@@ -90,23 +90,17 @@
             </div>
         </section>
 
-        <!-- Selected Day Playlist Manager -->
+        <!-- Selected Day Preset View -->
         <section id="playlistManagerSection" class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
-            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+            <div class="flex justify-between items-center mb-6">
                 <div>
                     <h3 id="selectedDayHeader" class="text-xl font-bold text-white">Monday Playlist</h3>
-                    <p id="trackCountSub" class="text-xs text-slate-400">0 tracks added</p>
+                    <p id="trackCountSub" class="text-xs text-slate-400">0 tracks preset</p>
                 </div>
-                <div class="flex items-center space-x-2 w-full sm:w-auto">
-                    <label class="flex-1 sm:flex-none px-4 py-2.5 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-200 font-medium rounded-xl cursor-pointer transition-all flex items-center justify-center space-x-2 border border-slate-700">
-                        <i class="fa-solid fa-plus text-indigo-400"></i>
-                        <span>Add Audio Files</span>
-                        <input type="file" id="audioFileInput" accept="audio/*" multiple class="hidden" onchange="handleFileSelect(event)">
-                    </label>
-                </div>
+                <span class="text-xs bg-slate-800 text-slate-300 px-3 py-1.5 rounded-lg border border-slate-700">Preset Mode</span>
             </div>
 
-            <!-- Track List Table / Cards -->
+            <!-- Track List -->
             <div id="trackListContainer" class="space-y-2 max-h-80 overflow-y-auto pr-1">
                 <!-- Dynamically populated -->
             </div>
@@ -114,24 +108,48 @@
 
     </main>
 
-    <!-- Hidden file input for playback mapping -->
-    <input type="file" id="playFileResolver" accept="audio/*" multiple class="hidden" onchange="handlePlaybackFilesSelected(event)">
-
     <!-- Footer -->
     <footer class="text-center py-6 text-xs text-slate-500 border-t border-slate-900 mt-auto">
-        7-Day Playlist Player • Web Edition
+        7-Day Preset Playlist Player • GitHub Hosted
     </footer>
 
     <!-- Application Script -->
     <script>
         const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
-        let playlists = {};
+
+        // ==========================================
+        // DEFINE YOUR PRESET AUDIO FILES HERE
+        // ==========================================
+        const playlists = {
+            "Monday": [
+                { name: "Monday Session 1", url: "audio/monday-1.mp3" },
+                { name: "Monday Session 2", url: "audio/monday-2.mp3" }
+            ],
+            "Tuesday": [
+                { name: "Tuesday Session 1", url: "audio/tuesday-1.mp3" }
+            ],
+            "Wednesday": [
+                { name: "Wednesday Session 1", url: "audio/wednesday-1.mp3" }
+            ],
+            "Thursday": [
+                { name: "Thursday Session 1", url: "audio/thursday-1.mp3" }
+            ],
+            "Friday": [
+                { name: "Friday Session 1", url: "audio/friday-1.mp3" }
+            ],
+            "Saturday": [
+                { name: "Saturday Session 1", url: "audio/saturday-1.mp3" }
+            ],
+            "Sunday": [
+                { name: "Sunday Session 1", url: "audio/sunday-1.mp3" }
+            ]
+        };
+
         let activeDay = "Monday";
         let currentPlayingDay = "Monday";
         let currentTrackIndex = 0;
         let audioPlayer = new Audio();
         let isPlaying = false;
-        let loadedAudioFiles = {}; // Stores active File objects for current session
 
         function getTodayName() {
             try {
@@ -144,28 +162,7 @@
             }
         }
 
-        function loadMetadata() {
-            try {
-                const saved = localStorage.getItem("weekly_playlists_meta");
-                if (saved) {
-                    playlists = JSON.parse(saved);
-                }
-            } catch (e) {}
-            
-            DAYS.forEach(day => {
-                if (!playlists[day]) playlists[day] = [];
-            });
-        }
-
-        function saveMetadata() {
-            try {
-                localStorage.setItem("weekly_playlists_meta", JSON.stringify(playlists));
-            } catch (e) {}
-        }
-
-        (async function initApp() {
-            loadMetadata();
-            
+        window.addEventListener('DOMContentLoaded', () => {
             const today = getTodayName();
             const badge = document.getElementById("currentDayBadge");
             if (badge) badge.innerText = today;
@@ -178,7 +175,7 @@
 
             audioPlayer.addEventListener('timeupdate', updateProgress);
             audioPlayer.addEventListener('ended', playNextTrack);
-        })();
+        });
 
         function renderDaysGrid() {
             const grid = document.getElementById("daysGrid");
@@ -209,7 +206,7 @@
                         ${isToday ? '<span class="text-[10px] bg-indigo-500/30 text-indigo-300 px-1.5 py-0.5 rounded font-medium">TODAY</span>' : ''}
                     </div>
                     <div class="text-xs text-slate-400 flex items-center justify-between">
-                        <span>${count} track${count === 1 ? '' : 's'}</span>
+                        <span>${count} preset track${count === 1 ? '' : 's'}</span>
                         <i class="fa-solid fa-chevron-right text-[10px] opacity-60"></i>
                     </div>
                 `;
@@ -223,7 +220,7 @@
             
             const tracks = playlists[activeDay] || [];
             const sub = document.getElementById("trackCountSub");
-            if (sub) sub.innerText = `${tracks.length} track${tracks.length === 1 ? '' : 's'} added`;
+            if (sub) sub.innerText = `${tracks.length} preset track${tracks.length === 1 ? '' : 's'}`;
 
             const container = document.getElementById("trackListContainer");
             if (!container) return;
@@ -232,29 +229,30 @@
             if (tracks.length === 0) {
                 container.innerHTML = `
                     <div class="text-center py-10 border border-dashed border-slate-800 rounded-xl">
-                        <i class="fa-solid fa-folder-open text-3xl text-slate-600 mb-2"></i>
-                        <p class="text-sm text-slate-400">No tracks added to ${activeDay} yet.</p>
-                        <p class="text-xs text-slate-600 mt-1">Click "Add Audio Files" above to list your track names.</p>
+                        <i class="fa-solid fa-music text-3xl text-slate-600 mb-2"></i>
+                        <p class="text-sm text-slate-400">No preset tracks for ${activeDay}.</p>
                     </div>
                 `;
                 return;
             }
 
-            tracks.forEach((trackName, index) => {
+            tracks.forEach((track, index) => {
                 const item = document.createElement("div");
                 item.className = "flex items-center justify-between p-3 rounded-xl bg-slate-950/40 border border-slate-800/60 hover:border-slate-700 transition-colors";
                 
+                const isCurrentlyPlayingThis = isPlaying && currentPlayingDay === activeDay && currentTrackIndex === index;
+
                 item.innerHTML = `
                     <div class="flex items-center space-x-3 truncate">
                         <span class="text-xs font-mono text-slate-500 w-5 text-right">${index + 1}</span>
-                        <div class="w-8 h-8 rounded-lg bg-slate-800 text-slate-400 flex items-center justify-center shrink-0">
-                            <i class="fa-solid fa-music text-xs"></i>
+                        <div class="w-8 h-8 rounded-lg ${isCurrentlyPlayingThis ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-400'} flex items-center justify-center shrink-0">
+                            <i class="fa-solid ${isCurrentlyPlayingThis ? 'fa-volume-high animate-bounce' : 'fa-music'} text-xs"></i>
                         </div>
-                        <span class="text-sm font-medium text-slate-200 truncate">${trackName}</span>
+                        <span class="text-sm font-medium text-slate-200 truncate">${track.name}</span>
                     </div>
                     <div class="flex items-center space-x-1 shrink-0">
-                        <button onclick="removeTrack('${activeDay}', ${index})" class="p-2 hover:bg-red-500/10 rounded-lg text-slate-400 hover:text-red-400 transition-colors" title="Remove">
-                            <i class="fa-solid fa-trash text-xs"></i>
+                        <button onclick="playSpecificTrack('${activeDay}', ${index})" class="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition-colors" title="Play">
+                            <i class="fa-solid fa-play text-xs"></i>
                         </button>
                     </div>
                 `;
@@ -262,84 +260,39 @@
             });
         }
 
-        function handleFileSelect(event) {
-            const files = event.target.files;
-            if (!files || files.length === 0) return;
-
-            for (let i = 0; i < files.length; i++) {
-                const file = files[i];
-                if (!playlists[activeDay]) playlists[activeDay] = [];
-                playlists[activeDay].push(file.name);
-                loadedAudioFiles[file.name] = file; // Cache file reference for current session
-            }
-
-            saveMetadata();
-            renderDaysGrid();
-            renderPlaylistManager();
-            event.target.value = "";
-        }
-
-        function removeTrack(day, index) {
-            playlists[day].splice(index, 1);
-            saveMetadata();
-            renderDaysGrid();
-            renderPlaylistManager();
-        }
-
-        function triggerPlayActive() {
+        async function playActivePlaylist() {
             const targetDay = activeDay;
             const tracks = playlists[targetDay] || [];
             if (tracks.length === 0) {
-                alert(`No tracks in ${targetDay}'s playlist! Add track names first.`);
+                alert(`No preset tracks in ${targetDay}'s playlist!`);
                 return;
             }
 
             currentPlayingDay = targetDay;
             currentTrackIndex = 0;
-
-            // Check if we have files loaded in session memory
-            const missingFiles = tracks.some(name => !loadedAudioFiles[name]);
-            if (missingFiles) {
-                // Prompt user to select files from their computer to match the playlist
-                alert(`To play ${targetDay}, please select your audio files from your device to link them.`);
-                document.getElementById("playFileResolver").click();
-            } else {
-                playCurrentTrack();
-            }
+            loadAndPlayTrack();
         }
 
-        function handlePlaybackFilesSelected(event) {
-            const files = event.target.files;
-            if (!files || files.length === 0) return;
-
-            for (let i = 0; i < files.length; i++) {
-                const file = files[i];
-                loadedAudioFiles[file.name] = file;
-            }
-            event.target.value = "";
-            playCurrentTrack();
+        async function playSpecificTrack(day, index) {
+            currentPlayingDay = day;
+            currentTrackIndex = index;
+            loadAndPlayTrack();
         }
 
-        function playCurrentTrack() {
-            const tracks = playlists[currentPlayingDay] || [];
-            if (currentTrackIndex >= tracks.length) return;
+        function loadAndPlayTrack() {
+            const tracks = playlists[currentPlayingDay];
+            if (!tracks || tracks.length === 0 || currentTrackIndex >= tracks.length) return;
 
-            const trackName = tracks[currentTrackIndex];
-            const file = loadedAudioFiles[trackName];
-
-            if (!file) {
-                alert(`Could not find file for "${trackName}". Please re-select files.`);
-                return;
-            }
-
-            const fileURL = URL.createObjectURL(file);
-            audioPlayer.src = fileURL;
+            const track = tracks[currentTrackIndex];
+            audioPlayer.src = track.url;
             audioPlayer.play().then(() => {
                 isPlaying = true;
                 updatePlayButtonState();
                 const nowPlaying = document.getElementById("nowPlayingText");
-                if (nowPlaying) nowPlaying.innerText = `${currentPlayingDay}: ${trackName}`;
+                if (nowPlaying) nowPlaying.innerText = `${currentPlayingDay}: ${track.name}`;
+                renderPlaylistManager();
             }).catch(e => {
+                alert(`Error playing file: ${track.url}. Make sure the file exists in your repository.`);
                 isPlaying = false;
                 updatePlayButtonState();
             });
@@ -349,12 +302,13 @@
             const tracks = playlists[currentPlayingDay] || [];
             if (currentTrackIndex < tracks.length - 1) {
                 currentTrackIndex++;
-                playCurrentTrack();
+                loadAndPlayTrack();
             } else {
                 isPlaying = false;
                 updatePlayButtonState();
                 const nowPlaying = document.getElementById("nowPlayingText");
                 if (nowPlaying) nowPlaying.innerText = "Playlist finished";
+                renderPlaylistManager();
             }
         }
 
@@ -374,7 +328,7 @@
             } else {
                 if (btnText) btnText.innerText = "Play Today";
                 if (playIcon) playIcon.className = "fa-solid fa-play";
-                if (playBtn) playBtn.onclick = triggerPlayActive;
+                if (playBtn) playBtn.onclick = playActivePlaylist;
             }
         }
 
@@ -382,6 +336,7 @@
             audioPlayer.pause();
             isPlaying = false;
             updatePlayButtonState();
+            renderPlaylistManager();
         }
 
         function updateProgress() {
